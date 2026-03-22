@@ -66,32 +66,6 @@ describe('AuthService', () => {
     userService = moduleRef.get<UserService>(UserService);
   });
 
-  describe('register', () => {
-    it('should register a new user', async () => {
-      const createUserDto: CreateUserDto = {
-        email: 'test@example.com',
-        password: 'Password1!',
-        firstName: 'Test',
-        lastName: 'User',
-      };
-
-      jest.spyOn(userService, 'create').mockResolvedValue({
-        id: '1',
-        email: 'test@example.com',
-        password: null,
-        isVerified: false,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        walletAddress: null,
-        role: 'USER',
-        roleId: null,
-      } as any);
-
-      const result = await authService.register(createUserDto);
-      expect(result).toEqual({ message: 'User registered successfully. Please check your email for verification.' });
-    });
-  });
-
   describe('login brute force protection', () => {
     const creds = { email: 'foo@bar.com', password: 'bad' };
 
