@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ConflictException,
   UnauthorizedException,
@@ -11,6 +12,7 @@ import * as bcrypt from 'bcrypt';
 import { PasswordValidator } from '../common/validators/password.validator';
 import { PasswordRotationService } from '../common/services/password-rotation.service';
 import { ConfigService } from '@nestjs/config';
+import { MultiLevelCacheService } from '../common/cache/multi-level-cache.service';
 
 /**
  * UserService
@@ -30,11 +32,14 @@ import { ConfigService } from '@nestjs/config';
  */
 @Injectable()
 export class UserService {
+  private readonly logger = new Logger(UserService.name);
+
   constructor(
     private prisma: PrismaService,
     private readonly passwordValidator: PasswordValidator,
     private readonly passwordRotationService: PasswordRotationService,
     private readonly configService: ConfigService,
+    private readonly cacheService: MultiLevelCacheService,
   ) {}
 
   /**
@@ -111,6 +116,7 @@ export class UserService {
     // === PASSWORD HISTORY TRACKING ===
     // Add initial password to history for rotation policy enforcement
     await this.passwordRotationService.addPasswordToHistory(user.id, hashedPassword);
+    await this.invalidateUserReadCaches(user.id);
 
     return user;
   }
@@ -127,9 +133,16 @@ export class UserService {
    * ```
    */
   async findByEmail(email: string) {
-    return this.prisma.user.findUnique({
-      where: { email },
-    });
+    return this.cacheService.wrap(
+      `user:email:${email}`,
+      () =>
+        this.monitorQuery('users.findByEmail', { email }, () =>
+          this.prisma.user.findUnique({
+            where: { email },
+          }),
+        ),
+      { l1Ttl: 60, l2Ttl: 300, tags: ['user'] },
+    );
   }
 
   /**
@@ -145,9 +158,16 @@ export class UserService {
    * ```
    */
   async findById(id: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id },
-    });
+    const user = await this.cacheService.wrap(
+      `user:detail:${id}`,
+      () =>
+        this.monitorQuery('users.findById', { userId: id }, () =>
+          this.prisma.user.findUnique({
+            where: { id },
+          }),
+        ),
+      { l1Ttl: 60, l2Ttl: 300, tags: ['user', `user:${id}`] },
+    );
 
     if (!user) {
       throw new NotFoundException(`User with ID ${id} not found`);
@@ -170,9 +190,16 @@ export class UserService {
    * ```
    */
   async findByWalletAddress(walletAddress: string) {
-    return this.prisma.user.findUnique({
-      where: { walletAddress },
-    });
+    return this.cacheService.wrap(
+      `user:wallet:${walletAddress}`,
+      () =>
+        this.monitorQuery('users.findByWalletAddress', { walletAddress }, () =>
+          this.prisma.user.findUnique({
+            where: { walletAddress },
+          }),
+        ),
+      { l1Ttl: 60, l2Ttl: 300, tags: ['user'] },
+    );
   }
 
   /**
