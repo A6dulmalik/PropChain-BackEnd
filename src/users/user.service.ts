@@ -599,6 +599,8 @@ export class UserService {
     await Promise.all([
       this.cacheService.del(`user:detail:${userId}`),
       this.cacheService.del(`user:analytics:${userId}`),
+      this.cacheService.invalidateByPattern('user:email:*'),
+      this.cacheService.invalidateByPattern('user:wallet:*'),
       this.cacheService.invalidateByPattern('user:search:*'),
       this.cacheService.invalidateByPattern(`user:activity:${userId}:*`),
       this.cacheService.invalidateByPattern(`user:followers:${userId}:*`),
