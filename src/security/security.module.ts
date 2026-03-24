@@ -6,12 +6,27 @@ import { IpBlockingService } from './services/ip-blocking.service';
 import { DdosProtectionService } from './services/ddos-protection.service';
 import { ApiQuotaService } from './services/api-quota.service';
 import { SecurityHeadersService } from './services/security-headers.service';
+import { HeaderValidationMiddleware } from './middleware/header-validation.middleware';
 import { SecurityController } from './security.controller';
 
 @Module({
   imports: [ConfigModule, RedisModule],
   controllers: [SecurityController],
-  providers: [RateLimitingService, IpBlockingService, DdosProtectionService, ApiQuotaService, SecurityHeadersService],
-  exports: [RateLimitingService, IpBlockingService, DdosProtectionService, ApiQuotaService, SecurityHeadersService],
+  providers: [
+    RateLimitingService,
+    IpBlockingService,
+    DdosProtectionService,
+    ApiQuotaService,
+    SecurityHeadersService,
+    HeaderValidationMiddleware,
+  ],
+  exports: [
+    RateLimitingService,
+    IpBlockingService,
+    DdosProtectionService,
+    ApiQuotaService,
+    SecurityHeadersService,
+    HeaderValidationMiddleware,
+  ],
 })
 export class SecurityModule {}
