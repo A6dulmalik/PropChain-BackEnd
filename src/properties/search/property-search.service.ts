@@ -4,6 +4,7 @@ import { PropertyStatus } from '../dto/create-property.dto';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { PropertySearchDto } from '../dto/property-search.dto';
 import { SearchAnalyticsService } from './search-analytics.service';
+import { PropertyStatus as PrismaPropertyStatus } from '@prisma/client';
 
 @Injectable()
 export class PropertySearchService {
@@ -53,7 +54,7 @@ export class PropertySearchService {
     // Normal search
     return this.prisma.property.findMany({
       where: {
-        status,
+        status: status as PrismaPropertyStatus,
         ...(location && { location: { contains: location, mode: 'insensitive' } }),
         ...(minPrice && { price: { gte: minPrice } }),
         ...(maxPrice && { price: { lte: maxPrice } }),
@@ -102,7 +103,16 @@ export class PropertySearchService {
   }
 
   private async normalSearch(dto: PropertySearchDto) {
-    const { page = 1, limit = 10, minPrice, maxPrice, location, status = PropertyStatus.AVAILABLE } = dto;
+    const {
+      page = 1,
+      limit = 10,
+      minPrice,
+      maxPrice,
+      location,
+      status: dtoStatus = PropertyStatus.AVAILABLE,
+    } = dto;
+
+    const status = this.mapPropertyStatus(dtoStatus);
 
     const offset = (page - 1) * limit;
 
@@ -117,5 +127,15 @@ export class PropertySearchService {
       take: limit,
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  private mapPropertyStatus(status: PropertyStatus): PrismaPropertyStatus {
+    const statusMap: Record<PropertyStatus, PrismaPropertyStatus> = {
+      [PropertyStatus.AVAILABLE]: 'LISTED' as PrismaPropertyStatus,
+      [PropertyStatus.PENDING]: 'PENDING' as PrismaPropertyStatus,
+      [PropertyStatus.SOLD]: 'SOLD' as PrismaPropertyStatus,
+      [PropertyStatus.RENTED]: 'SOLD' as PrismaPropertyStatus,
+    };
+    return statusMap[status] || ('DRAFT' as PrismaPropertyStatus);
   }
 }
