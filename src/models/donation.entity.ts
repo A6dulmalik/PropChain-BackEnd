@@ -10,6 +10,10 @@ export interface Donation {
   donorEmail?: string | null;
   blockchainHash?: string | null;
   status: DonationStatus;
+  userId?: string | null;
+  projectId?: string | null;
   createdAt: Date;
   updatedAt: Date;
+  user?: any;
+  project?: any;
 }

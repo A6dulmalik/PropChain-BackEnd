@@ -72,6 +72,8 @@ export interface PrismaDonation {
   donorEmail?: string | null;
   blockchainHash?: string | null;
   status: string;
+  userId?: string | null;
+  projectId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -9,6 +9,8 @@ describe('DonationsService', () => {
   let service: DonationsService;
   let prismaMock: any;
   let blockchainMock: any;
+  let cacheServiceMock: any;
+  let configServiceMock: any;
   let eventEmitter: EventEmitter;
 
   beforeEach(async () => {
@@ -18,11 +20,22 @@ describe('DonationsService', () => {
       donation: {
         findUnique: jest.fn(),
         create: jest.fn(),
+        findMany: jest.fn(),
       },
     };
 
     blockchainMock = {
       getTransactionReceipt: jest.fn(),
+    };
+
+    cacheServiceMock = {
+      wrap: jest.fn(async (_, factory) => factory()),
+      keys: jest.fn().mockResolvedValue([]),
+      del: jest.fn(),
+    };
+
+    configServiceMock = {
+      get: jest.fn((key: string, def: any) => def),
     };
 
     eventEmitter = new EventEmitter();
@@ -33,6 +46,9 @@ describe('DonationsService', () => {
         { provide: PrismaService, useValue: prismaMock },
         { provide: BlockchainService, useValue: blockchainMock },
         { provide: 'DONATION_EVENTS', useValue: eventEmitter },
+        { provide: 'CacheService', useValue: cacheServiceMock },
+        { provide: 'ConfigService', useValue: configServiceMock },
+        { provide: 'CACHE_MANAGER', useValue: {} },
       ],
     }).compile();
 
@@ -108,5 +124,30 @@ describe('DonationsService', () => {
     expect(result.isDuplicate).toBe(true);
     expect(result.donation.providerTransactionId).toBe('t3');
     expect(prismaMock.donation.create).not.toHaveBeenCalled();
+  });
+
+  it('returns leaderboard entries for global scope with default pagination', async () => {
+    prismaMock.donation.findMany.mockResolvedValue([
+      { userId: 'user1', amount: 100, currency: 'USD', user: { id: 'user1', username: 'Alice', privacySettings: { donationsPublic: true } } },
+      { userId: 'user2', amount: 80, currency: 'EUR', user: { id: 'user2', username: 'Bob', privacySettings: { donationsPublic: true } } },
+      { userId: 'user3', amount: 60, currency: 'USD', user: { id: 'user3', username: 'Charlie', privacySettings: { donationsPublic: false } } },
+    ]);
+
+    const leaderboard = await service.getLeaderboard({ scope: 'global', page: 1, limit: 10 });
+
+    expect(leaderboard.length).toBe(3);
+    expect(leaderboard[0].userName).toBe('Alice');
+    expect(leaderboard[2].userName).toBe('Anonymous');
+  });
+
+  it('returns project leaderboard entries when projectId is provided', async () => {
+    prismaMock.donation.findMany.mockResolvedValue([
+      { userId: 'user1', amount: 50, currency: 'USD', projectId: 'proj1', user: { id: 'user1', username: 'Alice', privacySettings: { donationsPublic: true } } },
+    ]);
+
+    const leaderboard = await service.getLeaderboard({ scope: 'project', projectId: 'proj1', page: 1, limit: 10 });
+
+    expect(leaderboard.length).toBe(1);
+    expect(leaderboard[0].projectId).toBe('proj1');
   });
 });

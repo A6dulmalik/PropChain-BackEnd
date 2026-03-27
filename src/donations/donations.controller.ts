@@ -1,4 +1,4 @@
-import { Body, Controller, Headers, HttpCode, Post } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { DonationsService } from './donations.service';
 import { DonationWebhookDto } from './dto/donation-webhook.dto';
@@ -28,5 +28,18 @@ export class DonationsController {
       data: donationRecord,
       message: isDuplicate ? 'Donation already exists (duplicate webhook)' : 'Donation recorded',
     };
+  }
+
+  @Get('leaderboard')
+  @ApiOperation({ summary: 'Get top donors leaderboard' })
+  @ApiResponse({ status: 200, description: 'Leaderboard fetched successfully' })
+  async getLeaderboard(
+    @Query('scope') scope: 'global' | 'project' = 'global',
+    @Query('projectId') projectId?: string,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 20,
+  ) {
+    const leaderboard = await this.donationsService.getLeaderboard({ scope, projectId, page, limit });
+    return { success: true, data: leaderboard };
   }
 }
