@@ -6,6 +6,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../database/prisma/prisma.service';
+import { TransactionManager } from '../database/prisma/transaction-manager.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import * as bcrypt from 'bcrypt';
 import { PasswordValidator } from '../common/validators/password.validator';
@@ -35,6 +36,7 @@ import { BoundaryValidationService } from '../common/validation';
 export class UserService extends BaseService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly transactionManager: TransactionManager,
     private readonly passwordValidator: PasswordValidator,
     private readonly passwordRotationService: PasswordRotationService,
     private readonly configService: ConfigService,
@@ -97,12 +99,6 @@ export class UserService extends BaseService {
     const input = await this.validateInput(CreateUserDto, createUserDto, 'create');
     const { email, password, walletAddress } = input;
 
-    // === PASSWORD STRENGTH VALIDATION ===
-    // Ensures password meets security requirements:
-    // - Minimum 8 characters
-    // - Mix of uppercase and lowercase
-    // - At least one number
-    // - At least one special character
     if (password) {
       const passwordValidation = this.passwordValidator.validatePassword(password);
       if (!passwordValidation.valid) {
@@ -110,39 +106,45 @@ export class UserService extends BaseService {
       }
     }
 
-    // === UNIQUENESS VALIDATION ===
-    // Prevents duplicate accounts with same email or wallet address
-    const existingUser = await this.prisma.user.findFirst({
-      where: {
-        OR: [{ email }, ...(walletAddress ? [{ walletAddress }] : [])],
-      },
-    });
-
-    if (existingUser) {
-      throw new ConflictException('User with this email or wallet address already exists');
-    }
-
-    // === PASSWORD HASHING ===
-    // Uses bcrypt for secure password hashing
-    // Salt rounds configurable via BCRYPT_ROUNDS (default: 12, minimum: 12)
-    // Higher = more secure but slower
     const bcryptRounds = this.configService.get<number>('BCRYPT_ROUNDS', 12);
-    const effectiveRounds = Math.max(bcryptRounds, 12); // Enforce minimum 12 rounds
+    const effectiveRounds = Math.max(bcryptRounds, 12);
     const hashedPassword = await bcrypt.hash(password, effectiveRounds);
 
-    // Create user with hashed password
-    const user = await this.prisma.user.create({
-      data: {
-        email,
-        password: hashedPassword,
-        walletAddress,
-        role: 'USER', // Default role
-      },
-    });
+    const user = await this.transactionManager.execute(
+      'create-user',
+      async ctx => {
+        const existingUser = await (ctx.tx as any).user.findFirst({
+          where: {
+            OR: [{ email }, ...(walletAddress ? [{ walletAddress }] : [])],
+          },
+        });
 
-    // === PASSWORD HISTORY TRACKING ===
-    // Add initial password to history for rotation policy enforcement
-    await this.passwordRotationService.addPasswordToHistory(user.id, hashedPassword);
+        if (existingUser) {
+          ctx.markForRollback('User with this email or wallet address already exists');
+          throw new ConflictException('User with this email or wallet address already exists');
+        }
+
+        const newUser = await (ctx.tx as any).user.create({
+          data: {
+            email,
+            password: hashedPassword,
+            walletAddress,
+            role: 'USER',
+          },
+        });
+
+        await (ctx.tx as any).passwordHistory.create({
+          data: {
+            userId: newUser.id,
+            passwordHash: hashedPassword,
+          },
+        });
+
+        return newUser;
+      },
+      { timeout: 10000, maxRetries: 3 },
+    );
+
     await this.invalidateUserReadCaches(user.id);
 
     return user;
@@ -271,35 +273,40 @@ export class UserService extends BaseService {
    * ```
    */
   async updatePassword(userId: string, newPassword: string) {
-    // === PASSWORD VALIDATION ===
-    // Ensure new password meets security requirements
     const passwordValidation = this.passwordValidator.validatePassword(newPassword);
     if (!passwordValidation.valid) {
       throw new BadRequestException(`Password validation failed: ${passwordValidation.errors.join(', ')}`);
     }
 
-    // === PASSWORD ROTATION POLICY CHECK ===
-    // Validate password rotation requirements (history check)
     const rotationCheck = await this.passwordRotationService.validatePasswordRotation(userId, newPassword);
     if (!rotationCheck.valid) {
       throw new BadRequestException(`Password rotation failed: ${rotationCheck.reason}`);
     }
 
-    // === BCRYPT HASHING ===
-    // Hash new password before storing with minimum 12 rounds
     const bcryptRounds = this.configService.get<number>('BCRYPT_ROUNDS', 12);
-    const effectiveRounds = Math.max(bcryptRounds, 12); // Enforce minimum 12 rounds
+    const effectiveRounds = Math.max(bcryptRounds, 12);
     const hashedPassword = await bcrypt.hash(newPassword, effectiveRounds);
 
-    // Update user password
-    const updatedUser = await this.prisma.user.update({
-      where: { id: userId },
-      data: { password: hashedPassword },
-    });
+    const updatedUser = await this.transactionManager.execute(
+      'update-password',
+      async ctx => {
+        const user = await (ctx.tx as any).user.update({
+          where: { id: userId },
+          data: { password: hashedPassword },
+        });
 
-    // === PASSWORD HISTORY TRACKING ===
-    // Add new password to history for rotation policy enforcement
-    await this.passwordRotationService.addPasswordToHistory(userId, hashedPassword);
+        await (ctx.tx as any).passwordHistory.create({
+          data: {
+            userId,
+            passwordHash: hashedPassword,
+          },
+        });
+
+        return user;
+      },
+      { timeout: 10000, maxRetries: 3 },
+    );
+
     await this.invalidateUserReadCaches(userId);
 
     return updatedUser;
