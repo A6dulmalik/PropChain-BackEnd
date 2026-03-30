@@ -87,6 +87,10 @@ export class PropertiesService extends BaseService {
           bathrooms: input.bathrooms,
           squareFootage: input.areaSqFt,
           propertyType: input.type,
+          // SEO metadata fields for issue #260
+          metaTitle: input.metaTitle,
+          metaDescription: input.metaDescription,
+          metaKeywords: input.metaKeywords,
         },
         include: {
           owner: {
@@ -161,6 +165,9 @@ export class PropertiesService extends BaseService {
 
     const skip = (page - 1) * limit;
     const where: Record<string, any> = {};
+
+    // Exclude soft-deleted properties
+    where.isDeleted = false;
 
     if (search) {
       where.OR = [
@@ -278,8 +285,8 @@ export class PropertiesService extends BaseService {
         cacheKey,
         async () =>
           this.monitorQuery('properties.findOne', { propertyId: id }, async () =>
-            (this.prisma as any).property.findUnique({
-              where: { id },
+            (this.prisma as any).property.findFirst({
+              where: { id, isDeleted: false },
               relationLoadStrategy: 'join',
               include: {
                 owner: { select: { id: true, email: true, role: true } },
@@ -384,19 +391,82 @@ export class PropertiesService extends BaseService {
         throw new NotFoundException(`Property with ID ${id} not found`);
       }
 
-      await (this.prisma as any).property.delete({
+      // Soft delete for issues #258 and #259
+      await (this.prisma as any).property.update({
         where: { id },
+        data: {
+          isDeleted: true,
+          deletedAt: new Date(),
+        },
       });
 
       await this.invalidatePropertyReadCaches(id);
 
-      this.logger.log(`Property deleted: ${id}`);
+      this.logger.log(`Property soft deleted: ${id}`);
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw error;
       }
-      this.logger.error(`Failed to delete property ${id}`, error);
+      this.logger.error(`Failed to soft delete property ${id}`, error);
       throw new InvalidInputException(undefined, 'Failed to delete property');
+    }
+  }
+
+  // Restore functionality for issue #259
+  async restore(id: string): Promise<any> {
+    try {
+      const existingProperty = await (this.prisma as any).property.findFirst({
+        where: { 
+          id,
+          isDeleted: true 
+        },
+      });
+
+      if (!existingProperty) {
+        throw new NotFoundException(`Soft deleted property with ID ${id} not found`);
+      }
+
+      const restoredProperty = await (this.prisma as any).property.update({
+        where: { id },
+        data: {
+          isDeleted: false,
+          deletedAt: null,
+        },
+        include: {
+          owner: {
+            select: { id: true, email: true, role: true },
+          },
+        },
+      });
+
+      await this.invalidatePropertyReadCaches(id);
+
+      this.logger.log(`Property restored: ${id}`);
+      return restoredProperty;
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      this.logger.error(`Failed to restore property ${id}`, error);
+      throw new InvalidInputException(undefined, 'Failed to restore property');
+    }
+  }
+
+  // Get soft deleted properties for admin purposes
+  async getSoftDeleted(): Promise<any[]> {
+    try {
+      return await (this.prisma as any).property.findMany({
+        where: { isDeleted: true },
+        include: {
+          owner: {
+            select: { id: true, email: true, role: true },
+          },
+        },
+        orderBy: { deletedAt: 'desc' },
+      });
+    } catch (error) {
+      this.logger.error('Failed to fetch soft deleted properties', error);
+      throw new InvalidInputException(undefined, 'Failed to fetch soft deleted properties');
     }
   }
 

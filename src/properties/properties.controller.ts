@@ -85,12 +85,29 @@ export class PropertiesController {
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Delete a property' })
+  @ApiOperation({ summary: 'Soft delete a property' })
   @ApiParam({ name: 'id', description: 'Property ID' })
-  @ApiResponse({ status: 200, description: 'Property deleted successfully.' })
+  @ApiResponse({ status: 200, description: 'Property soft deleted successfully.' })
   @ApiStandardErrorResponse([400, 401, 404])
   remove(@Param('id') id: string) {
     return this.propertiesService.remove(id);
+  }
+
+  @Post(':id/restore')
+  @ApiOperation({ summary: 'Restore a soft-deleted property' })
+  @ApiParam({ name: 'id', description: 'Property ID' })
+  @ApiResponse({ status: 200, description: 'Property restored successfully.', type: PropertyResponseDto })
+  @ApiStandardErrorResponse([400, 401, 404])
+  restore(@Param('id') id: string) {
+    return this.propertiesService.restore(id);
+  }
+
+  @Get('deleted/list')
+  @ApiOperation({ summary: 'Get list of soft-deleted properties (admin only)' })
+  @ApiResponse({ status: 200, description: 'List of soft-deleted properties.' })
+  @ApiStandardErrorResponse([400, 401])
+  getSoftDeleted() {
+    return this.propertiesService.getSoftDeleted();
   }
 
   // --- Listing Report System (#262) ---

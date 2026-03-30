@@ -110,6 +110,10 @@ model Property {
   createdAt         DateTime       @default(now()) @map("created_at")
   updatedAt         DateTime       @updatedAt @map("updated_at")
 
+  // Soft delete fields for issues #258 and #259
+  deletedAt         DateTime?      @map("deleted_at")
+  isDeleted         Boolean        @default(false) @map("is_deleted")
+
   // Valuation fields
   estimatedValue    Decimal?       @map("estimated_value")
   valuationDate     DateTime?      @map("valuation_date")
@@ -136,6 +140,11 @@ model Property {
 
   rejectionReason   String?        @map("rejection_reason")
 
+  // SEO metadata fields for issue #260
+  metaTitle         String?        @map("meta_title")
+  metaDescription   String?        @map("meta_description")
+  metaKeywords      String[]       @map("meta_keywords")
+
   // Relationships
   reports           PropertyReport[]
   versions          PropertyVersion[]
@@ -151,6 +160,8 @@ model Property {
   @@index([status, createdAt(sort: Desc)]) // For property listings by status and date
   @@index([ownerId, createdAt(sort: Desc)]) // For owner's properties by date
   @@index([status, price]) // For property search by status and price
+  @@index([isDeleted]) // For filtering soft-deleted properties
+  @@index([deletedAt]) // For cleanup of old soft-deleted properties
   @@unique([ownerId, title, location]) // Prevent duplicate properties for same owner with same title and location
   @@unique([latitude, longitude, ownerId]) // Prevent duplicate properties at same coordinates for same owner
   @@map("properties")
