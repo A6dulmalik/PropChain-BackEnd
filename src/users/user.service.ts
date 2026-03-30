@@ -108,6 +108,7 @@ export class UserService extends BaseService {
     }
 
 
+
     // === UNIQUENESS VALIDATION ===
     // Prevents duplicate accounts with same email or wallet address
     const existingUser = await this.prisma.executeWithTimeout(
