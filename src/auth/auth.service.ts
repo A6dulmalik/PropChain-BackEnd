@@ -130,6 +130,12 @@ export class AuthService {
       throw new UnauthorizedException('Your account has been blocked. Please contact support.');
     }
 
+    if (user.isDeactivated) {
+      throw new UnauthorizedException(
+        'Your account has been deactivated. Please contact support to reactivate your account.',
+      );
+    }
+
     const passwordMatches = await comparePassword(data.password, user.password);
     if (!passwordMatches) {
       // Record failed login attempt
@@ -210,6 +216,10 @@ export class AuthService {
 
     if (user.isBlocked) {
       throw new UnauthorizedException('Your account has been blocked');
+    }
+
+    if (user.isDeactivated) {
+      throw new UnauthorizedException('Your account has been deactivated');
     }
 
     if (user.id !== payload.sub) {
