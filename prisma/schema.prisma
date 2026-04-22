@@ -154,6 +154,23 @@ model PasswordResetToken {
   @@map("password_reset_tokens")
 }
 
+// Login attempt tracking for rate limiting
+model LoginAttempt {
+  id          String   @id @default(uuid())
+  email       String   // Track by email to prevent enumeration
+  ipAddress   String?  @map("ip_address")
+  userAgent   String?  @map("user_agent")
+  success     Boolean  @default(false)
+  lockedOut   Boolean  @default(false) @map("locked_out")
+  attemptTime DateTime @default(now()) @map("attempt_time")
+  unlockAt    DateTime? @map("unlock_at") // When the account will be auto-unlocked
+
+  @@index([email, attemptTime])
+  @@index([email, lockedOut])
+  @@index([unlockAt])
+  @@map("login_attempts")
+}
+
 // Property model
 model Property {
   id              String          @id @default(uuid())
